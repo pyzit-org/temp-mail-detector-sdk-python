@@ -1,0 +1,61 @@
+[project]
+name = "tempmail-pyzit"
+version = "0.1.2"
+description = "Official Python SDK for the Pyzit disposable email detector API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors  = [{ name = "Pyzit", email = "hi@pyzit.com" }]
+keywords = ["email", "disposable", "tempmail", "validation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.0",
+]
+
+[project.urls]
+Homepage = "https://temp-mail-detector.pyzit.com"
+Documentation = "https://temp-mail-detector.pyzit.com/docs"
+Repository = "https://github.com/pyzit/pyzit-tempmail-python"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio",
+    "respx",
+    "ruff",         
+    "mypy",           
+    "build",
+    "twine",    
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tempmail_pyzit"]
+
+[tool.ruff]
+line-length = 88
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["tests"] 

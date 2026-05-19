@@ -1,6 +1,6 @@
 [project]
 name = "tempmail-pyzit"
-version = "0.1.2"
+version = "0.1.0"
 description = "Official Python SDK for the Pyzit disposable email detector API"
 readme = "README.md"
 requires-python = ">=3.9"

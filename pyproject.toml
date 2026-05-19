@@ -25,8 +25,8 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://temp-mail-detector.pyzit.com"
-Documentation = "https://temp-mail-detector.pyzit.com/docs"
-Repository = "https://github.com/pyzit/pyzit-tempmail-python"
+Documentation = "https://github.com/pyzit-org/temp-mail-detector-sdk-python"
+Repository = "https://github.com/pyzit-org/temp-mail-detector-sdk-python"
 
 [project.optional-dependencies]
 dev = [

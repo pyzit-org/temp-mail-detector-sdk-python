@@ -20,9 +20,9 @@
 
 Stop fake signups. Block throwaway addresses. Protect your platform.
 
-[![PyPI version](https://img.shields.io/pypi/v/pyzit-tempmail?color=1D9E75&labelColor=0f0f0f&style=flat-square)](https://pypi.org/project/pyzit-tempmail/)
-[![Python](https://img.shields.io/pypi/pyversions/pyzit-tempmail?color=1D9E75&labelColor=0f0f0f&style=flat-square)](https://pypi.org/project/pyzit-tempmail/)
-[![License](https://img.shields.io/pypi/l/pyzit-tempmail?color=1D9E75&labelColor=0f0f0f&style=flat-square)](LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/tempmail-pyzit?color=1D9E75&labelColor=0f0f0f&style=flat-square)](https://pypi.org/project/tempmail-pyzit/)
+[![Python](https://img.shields.io/pypi/pyversions/tempmail-pyzit?color=1D9E75&labelColor=0f0f0f&style=flat-square)](https://pypi.org/project/tempmail-pyzit/)
+[![License](https://img.shields.io/pypi/l/tempmail-pyzit?color=1D9E75&labelColor=0f0f0f&style=flat-square)](LICENSE)
 [![mypy](https://img.shields.io/badge/type--checked-mypy%20strict-1D9E75?labelColor=0f0f0f&style=flat-square)](https://mypy.readthedocs.io/)
 [![uv](https://img.shields.io/badge/built%20with-uv-1D9E75?labelColor=0f0f0f&style=flat-square)](https://github.com/astral-sh/uv)
 

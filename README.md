@@ -32,7 +32,7 @@ Stop fake signups. Block throwaway addresses. Protect your platform.
 
 ## ◈ What is this?
 
-`pyzit-tempmail` is the official Python client for the **Pyzit Disposable Email API** — a service that detects throwaway, temporary, and fake email addresses in real time.
+`tempmail-pyzit` is the official Python client for the **Pyzit Disposable Email API** — a service that detects throwaway, temporary, and fake email addresses in real time.
 
 ```
 User submits email          SDK validates it              Your app decides
@@ -66,13 +66,13 @@ Works with **Django**, **Flask**, **FastAPI**, plain scripts — sync and async 
 ## ◈ Installation
 
 ```bash
-pip install pyzit-tempmail
+pip install tempmail-pyzit
 ```
 
 Or with [uv](https://github.com/astral-sh/uv) (recommended):
 
 ```bash
-uv add pyzit-tempmail
+uv add tempmail-pyzit
 ```
 
 **Requirements:** Python 3.9 or higher.
@@ -82,7 +82,7 @@ uv add pyzit-tempmail
 ## ◈ Quick start
 
 ```python
-from pyzit_tempmail import TempMailClient
+from tempmail_pyzit import TempMailClient
 
 client = TempMailClient("YOUR_API_TOKEN")
 
@@ -250,7 +250,7 @@ BulkResult
 The method signatures are identical — just add `await`.
 
 ```python
-from pyzit_tempmail import AsyncTempMailClient
+from tempmail_pyzit import AsyncTempMailClient
 
 client = AsyncTempMailClient("YOUR_API_TOKEN")
 
@@ -271,7 +271,7 @@ All responses are fully typed [Pydantic v2](https://docs.pydantic.dev/) models.
 You get autocomplete, runtime validation, and type safety for free.
 
 ```
-pyzit_tempmail.models
+tempmail_pyzit.models
 │
 ├── CheckResult          ← client.check()
 ├── DetailedResult       ← client.detailed()
@@ -306,7 +306,7 @@ PyzitError                    ← catch-all for any SDK error
 **Recommended pattern — catch specific errors:**
 
 ```python
-from pyzit_tempmail import (
+from tempmail_pyzit import (
     TempMailClient,
     AuthenticationError,
     PlanRequiredError,
@@ -367,7 +367,7 @@ def is_allowed(email: str) -> bool:
 ```python
 # validators.py
 from django.core.exceptions import ValidationError
-from pyzit_tempmail import TempMailClient, PyzitError
+from tempmail_pyzit import TempMailClient, PyzitError
 import os
 
 _client = TempMailClient(os.environ["PYZIT_TOKEN"])
@@ -397,7 +397,7 @@ class UserProfile(models.Model):
 
 ```python
 from fastapi import FastAPI, HTTPException
-from pyzit_tempmail import AsyncTempMailClient, PyzitError
+from tempmail_pyzit import AsyncTempMailClient, PyzitError
 import os
 
 app = FastAPI()
@@ -424,7 +424,7 @@ async def register(email: str):
 
 ```python
 from flask import Flask, request, jsonify
-from pyzit_tempmail import TempMailClient, PyzitError
+from tempmail_pyzit import TempMailClient, PyzitError
 import os
 
 app = Flask(__name__)
@@ -470,8 +470,8 @@ This project is built with [uv](https://github.com/astral-sh/uv).
 
 ```bash
 # clone
-git clone https://github.com/pyzit/pyzit-tempmail-python.git
-cd pyzit-tempmail-python
+git clone https://github.com/pyzit-org/temp-mail-detector-sdk-python.git
+cd temp-mail-detector-sdk-python
 
 # install all dev dependencies
 uv sync --extra dev
@@ -493,7 +493,7 @@ uv build
 **Project layout:**
 
 ```
-src/pyzit_tempmail/
+src/tempmail_pyzit/
 ├── __init__.py        ← public API surface
 ├── exceptions.py      ← all custom error classes
 ├── models.py          ← pydantic response types

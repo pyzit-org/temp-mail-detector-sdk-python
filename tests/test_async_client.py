@@ -18,7 +18,8 @@ from tempmail_pyzit import (
     BulkResult,
     CheckResult,
     DetailedResult,
-    PlanRequiredError,
+    InsufficientScopeError,
+    QuotaExceededError,
     RateLimitError,
     TimeoutError,
 )
@@ -73,17 +74,39 @@ class TestAsyncDetailed:
         respx.post(DETAILED_URL).mock(
             return_value=httpx.Response(200, json=DETAILED_PAYLOAD)
         )
-        r = await async_client.detailed("x@new-domain.io")
+        r = await async_client.detailed("user@guerrillamail.com")
         assert isinstance(r, DetailedResult)
-        assert r.should_reject is True
+        assert r.is_trusted is True
+        assert r.classification == "trusted"
+        assert r.should_reject is False
 
     @respx.mock
-    async def test_402_raises_plan_required(self, async_client):
+    async def test_402_raises_quota_exceeded(self, async_client):
         respx.post(DETAILED_URL).mock(
-            return_value=httpx.Response(402, json={"required_plan": "pro"})
+            return_value=httpx.Response(
+                402,
+                json={
+                    "detail": "You have exceeded your monthly detailed check "
+                    "quota. Please upgrade your plan.",
+                    "code": "quota_exceeded",
+                },
+            )
         )
-        with pytest.raises(PlanRequiredError):
+        with pytest.raises(QuotaExceededError) as exc:
             await async_client.detailed("x@y.com")
+        assert exc.value.quota_type == "detailed"
+
+    @respx.mock
+    async def test_403_raises_insufficient_scope(self, async_client):
+        respx.post(DETAILED_URL).mock(
+            return_value=httpx.Response(
+                403,
+                json={"detail": "API key lacks required scope: 'tmd:detailed'."},
+            )
+        )
+        with pytest.raises(InsufficientScopeError) as exc:
+            await async_client.detailed("x@y.com")
+        assert exc.value.required_scope == "tmd:detailed"
 
 
 class TestAsyncBulk:
@@ -92,5 +115,6 @@ class TestAsyncBulk:
         respx.post(BULK_URL).mock(return_value=httpx.Response(200, json=BULK_PAYLOAD))
         r = await async_client.bulk(["hi@pyzit.com", "x@mailnator.com"])
         assert isinstance(r, BulkResult)
-        assert r.processed == 2
+        assert r.total == 2
+        assert r.status == "mixed"
         assert r.disposable_emails() == ["x@mailnator.com"]

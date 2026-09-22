@@ -1,7 +1,7 @@
-BASE_URL = "https://api-tempmail.pyzit.com/v1"
-CHECK_URL = BASE_URL + "/validate/check/"
-DETAILED_URL = BASE_URL + "/validate/detailed/"
-BULK_URL = BASE_URL + "/validate/bulk/"
+BASE_URL = "https://api.pyzit.com"
+CHECK_URL = BASE_URL + "/v1/tmd/check/"
+DETAILED_URL = BASE_URL + "/v1/tmd/detailed/"
+BULK_URL = BASE_URL + "/v1/tmd/bulk/"
 
 CLEAN_CHECK_PAYLOAD = {
     "email": "hi@pyzit.com",
@@ -14,57 +14,34 @@ DISPOSABLE_CHECK_PAYLOAD = {
     "status": "disposable",
 }
 DETAILED_PAYLOAD = {
-    "email": "x@new-domain.io",
-    "domain": "new-domain.io",
-    "is_disposable": True,
-    "status": "disposable",
-    "reputation_score": 0.0,
-    "risk_level": "high",
-    "recommendation": "reject",
+    "email": "user@guerrillamail.com",
+    "domain": "guerrillamail.com",
+    "is_disposable": False,
+    "is_trusted": True,
+    "classification": "trusted",
+    "reputation_score": 100,
+    "risk_level": "low",
+    "is_valid_format": True,
+    "rule_applied": "custom_whitelist",
     "details": {
-        "reputation": {
-            "reputation_score": 0.0,
-            "is_disposable": True,
-            "disposable_confidence": 0.79,
-            "risk_level": "high",
-            "recommendation": "reject",
-        },
-        "signals": {
-            "positive": [],
-            "negative": ["no_mx_records", "new_domain"],
-            "neutral": ["limited_history"],
-        },
-        "dns_intelligence": {
-            "has_mx": True,
-            "mx_records": [
-                {
-                    "priority": 5,
-                    "exchange": "mail1.example.com",
-                    "ips": ["172.65.182.103"],
-                },
-                {
-                    "priority": 10,
-                    "exchange": "mail2.example.com",
-                    "ips": ["172.65.182.104"],
-                },
-            ],
-            "has_a_record": True,
-            "has_spf": True,
-            "has_dmarc": False,
-            "error": None,
-        },
-        "stability": {
-            "stability_score": 0.2,
-            "domain_age_days": 0,
-            "is_new_domain": True,
-            "risk_factors": ["newly_observed_domain"],
-        },
+        "has_mx": True,
+        "mx_records": ["custom-whitelist.internal"],
+        "has_a": True,
+        "a_records": [],
+        "has_spf": True,
+        "spf_record": "v=spf1 include:custom-whitelist ~all",
+        "has_dmarc": True,
+        "dmarc_record": "v=DMARC1; p=none",
     },
+    "status": "clean",
 }
 BULK_PAYLOAD = {
-    "results": {
-        "hi@pyzit.com": False,
-        "x@mailnator.com": True,
-    },
-    "processed": 2,
+    "total": 2,
+    "status": "mixed",
+    "disposable_count": 1,
+    "flagged_domains": ["mailnator.com"],
+    "results": [
+        {"email": "hi@pyzit.com", "is_disposable": False, "status": "clean"},
+        {"email": "x@mailnator.com", "is_disposable": True, "status": "disposable"},
+    ],
 }

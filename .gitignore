@@ -39,5 +39,6 @@ Thumbs.db
 # UV
 uv.lock
 
-# Python version
-.python-version
+test/
+changes.md
+DOCUMENTATION.md

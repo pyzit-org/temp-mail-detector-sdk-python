@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import random
+import time
 from typing import Any
 
 import httpx
 
 from ._http import BASE_URL, DEFAULT_TIMEOUT, build_headers, raise_for_status
-from .exceptions import TimeoutError
+from .exceptions import (
+    APIError,
+    PyzitError,
+    TimeoutError,
+)
 from .models import BulkResult, CheckResult, DetailedResult
 
 
@@ -14,7 +20,7 @@ class TempMailClient:
 
     Usage::
 
-        from pyzit_tempmail import TempMailClient
+        from tempmail_pyzit import TempMailClient
 
         client = TempMailClient("YOUR_API_TOKEN")
         result = client.check("user@example.com")
@@ -28,27 +34,78 @@ class TempMailClient:
         *,
         timeout: float = DEFAULT_TIMEOUT,
         base_url: str = BASE_URL,
+        max_retries: int = 2,
+        fail_open: bool = False,
     ) -> None:
         self._headers = build_headers(api_token)
         self._timeout = timeout
         self._base_url = base_url.rstrip("/")
+        self._max_retries = max_retries
+        self._fail_open = fail_open
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        try:
-            with httpx.Client(timeout=self._timeout) as http:
-                r = http.post(
-                    self._base_url + path,
-                    json=payload,
-                    headers=self._headers,
-                )
-            return raise_for_status(r)
-        except httpx.TimeoutException as exc:
-            raise TimeoutError("Request timed out.") from exc
+        attempts = 0
+        while attempts <= self._max_retries:
+            try:
+                with httpx.Client(timeout=self._timeout) as http:
+                    r = http.post(
+                        self._base_url + path,
+                        json=payload,
+                        headers=self._headers,
+                    )
+                if r.status_code == 200:
+                    return r.json()  # type: ignore[no-any-return]
+
+                # Handle 429 rate limit with retry
+                if r.status_code == 429 and attempts < self._max_retries:
+                    retry_after = float(r.headers.get("Retry-After", 1))
+                    time.sleep(retry_after + random.uniform(0.1, 0.4))
+                    attempts += 1
+                    continue
+
+                # Handle 5xx errors with retry
+                if r.status_code >= 500 and attempts < self._max_retries:
+                    time.sleep((2**attempts) + random.uniform(0.1, 0.4))
+                    attempts += 1
+                    continue
+
+                # Process non-retryable errors
+                return raise_for_status(r)
+
+            except httpx.TimeoutException as exc:
+                if attempts < self._max_retries:
+                    attempts += 1
+                    time.sleep((2**attempts) + random.uniform(0.1, 0.4))
+                    continue
+                if self._fail_open:
+                    return {
+                        "email": payload.get("email", ""),
+                        "is_disposable": False,
+                        "status": "clean",
+                    }
+                raise TimeoutError("Request timed out.") from exc
+
+            except (httpx.NetworkError, APIError) as exc:
+                if attempts < self._max_retries:
+                    attempts += 1
+                    time.sleep((2**attempts) + random.uniform(0.1, 0.4))
+                    continue
+                if self._fail_open:
+                    return {
+                        "email": payload.get("email", ""),
+                        "is_disposable": False,
+                        "status": "clean",
+                    }
+                if isinstance(exc, APIError):
+                    raise
+                raise PyzitError(f"Network error: {exc}") from exc
+
+        raise PyzitError("Max retries exceeded.")
 
     # ── public methods ──────────────────────────────────────────
 
     def check(self, email: str) -> CheckResult:
-        """Check if an email is disposable (free tier).
+        """Check if an email is disposable.
 
         Args:
             email: The email address to validate.
@@ -58,38 +115,51 @@ class TempMailClient:
 
         Raises:
             AuthenticationError: Bad token.
+            InsufficientScopeError: Token lacks tmd:basic scope.
+            QuotaExceededError: Monthly quota exhausted.
             RateLimitError: Too many requests.
             APIError: Unexpected server error.
         """
-        data = self._post("/validate/check/", {"email": email})
+        data = self._post("/v1/tmd/check/", {"email": email})
         return CheckResult(**data)
 
     def detailed(self, email: str) -> DetailedResult:
-        """Full analysis with DNS, signals, reputation (Pro tier).
+        """Full analysis with DNS, reputation, and classification.
 
         Args:
             email: The email address to analyse.
 
         Returns:
-            DetailedResult with risk_level, signals, dns_intelligence etc.
+            DetailedResult with classification, reputation_score, DNS details etc.
 
         Raises:
-            PlanRequiredError: Your token doesn't have Pro access.
+            AuthenticationError: Bad token.
+            InsufficientScopeError: Token lacks tmd:detailed scope.
+            QuotaExceededError: Monthly detailed quota exhausted.
+            RateLimitError: Too many requests.
+            APIError: Unexpected server error.
         """
-        data = self._post("/validate/detailed/", {"email": email})
+        data = self._post("/v1/tmd/detailed/", {"email": email})
         return DetailedResult(**data)
 
     def bulk(self, emails: list[str]) -> BulkResult:
-        """Validate many emails in a single request (Business tier).
+        """Validate many emails in a single request.
 
         Args:
-            emails: List of email addresses (max 100 per request).
+            emails: List of email addresses (max depends on your plan:
+                   Free=10, Pro=50, Scale=100).
 
         Returns:
-            BulkResult with results dict and processed count.
+            BulkResult with total, status, disposable_count,
+            flagged_domains, and results array.
 
         Raises:
-            PlanRequiredError: Your token doesn't have Business access.
+            AuthenticationError: Bad token.
+            InsufficientScopeError: Token lacks tmd:basic scope.
+            QuotaExceededError: Monthly quota exhausted.
+            BatchLimitExceededError: Request exceeds your plan's batch size limit.
+            RateLimitError: Too many requests.
+            APIError: Unexpected server error.
         """
-        data = self._post("/validate/bulk/", {"emails": emails})
+        data = self._post("/v1/tmd/bulk/", {"emails": emails})
         return BulkResult(**data)

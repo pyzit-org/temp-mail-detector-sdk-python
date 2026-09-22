@@ -16,10 +16,12 @@ from fixtures import (
 from tempmail_pyzit import (
     APIError,
     AuthenticationError,
+    BatchLimitExceededError,
     BulkResult,
     CheckResult,
     DetailedResult,
-    PlanRequiredError,
+    InsufficientScopeError,
+    QuotaExceededError,
     RateLimitError,
     TimeoutError,
 )
@@ -121,27 +123,40 @@ class TestDetailed:
         respx.post(DETAILED_URL).mock(
             return_value=httpx.Response(200, json=DETAILED_PAYLOAD)
         )
-        r = client.detailed("x@new-domain.io")
+        r = client.detailed("user@guerrillamail.com")
         assert isinstance(r, DetailedResult)
-        assert r.risk_level == "high"
-        assert r.should_reject is True
+        assert r.risk_level == "low"
+        assert r.is_trusted is True
+        assert r.classification == "trusted"
+        assert r.should_reject is False
 
     @respx.mock
-    def test_402_raises_plan_required(self, client):
+    def test_402_raises_quota_exceeded(self, client):
         respx.post(DETAILED_URL).mock(
-            return_value=httpx.Response(402, json={"required_plan": "pro"})
+            return_value=httpx.Response(
+                402,
+                json={
+                    "detail": "You have exceeded your monthly detailed check "
+                    "quota. Please upgrade your plan.",
+                    "code": "quota_exceeded",
+                },
+            )
         )
-        with pytest.raises(PlanRequiredError) as exc:
+        with pytest.raises(QuotaExceededError) as exc:
             client.detailed("x@y.com")
-        assert exc.value.required_plan == "pro"
+        assert exc.value.quota_type == "detailed"
 
     @respx.mock
-    def test_403_also_raises_plan_required(self, client):
+    def test_403_raises_insufficient_scope(self, client):
         respx.post(DETAILED_URL).mock(
-            return_value=httpx.Response(403, json={"required_plan": "pro"})
+            return_value=httpx.Response(
+                403,
+                json={"detail": "API key lacks required scope: 'tmd:detailed'."},
+            )
         )
-        with pytest.raises(PlanRequiredError):
+        with pytest.raises(InsufficientScopeError) as exc:
             client.detailed("x@y.com")
+        assert exc.value.required_scope == "tmd:detailed"
 
 
 # ── bulk() ──────────────────────────────────────────────────────
@@ -153,7 +168,9 @@ class TestBulk:
         respx.post(BULK_URL).mock(return_value=httpx.Response(200, json=BULK_PAYLOAD))
         r = client.bulk(["hi@pyzit.com", "x@mailnator.com"])
         assert isinstance(r, BulkResult)
-        assert r.processed == 2
+        assert r.total == 2
+        assert r.status == "mixed"
+        assert r.disposable_count == 1
 
     @respx.mock
     def test_sends_emails_list_in_body(self, client):
@@ -167,13 +184,43 @@ class TestBulk:
         assert body["emails"] == ["hi@pyzit.com", "x@mailnator.com"]
 
     @respx.mock
-    def test_402_raises_plan_required_business(self, client):
+    def test_bulk_result_helper_methods(self, client):
+        respx.post(BULK_URL).mock(return_value=httpx.Response(200, json=BULK_PAYLOAD))
+        r = client.bulk(["hi@pyzit.com", "x@mailnator.com"])
+        assert r.clean_emails() == ["hi@pyzit.com"]
+        assert r.disposable_emails() == ["x@mailnator.com"]
+        assert r.flagged_domains == ["mailnator.com"]
+
+    @respx.mock
+    def test_402_raises_quota_exceeded_simple(self, client):
         respx.post(BULK_URL).mock(
-            return_value=httpx.Response(402, json={"required_plan": "business"})
+            return_value=httpx.Response(
+                402,
+                json={
+                    "detail": "You have exceeded your monthly simple check "
+                    "quota. Please upgrade your plan.",
+                    "code": "quota_exceeded",
+                },
+            )
         )
-        with pytest.raises(PlanRequiredError) as exc:
+        with pytest.raises(QuotaExceededError) as exc:
             client.bulk(["a@b.com"])
-        assert exc.value.required_plan == "business"
+        assert exc.value.quota_type == "simple"
+
+    @respx.mock
+    def test_400_raises_batch_limit_exceeded(self, client):
+        respx.post(BULK_URL).mock(
+            return_value=httpx.Response(
+                400,
+                json={
+                    "detail": "Your plan allows a maximum of 10 emails per "
+                    "bulk request. Upgrade your plan for higher limits."
+                },
+            )
+        )
+        with pytest.raises(BatchLimitExceededError) as exc:
+            client.bulk(["a@b.com"] * 15)
+        assert exc.value.max_allowed == 10
 
 
 # ── base_url override (for integration / mock servers) ──────────
@@ -184,8 +231,8 @@ class TestClientConfig:
     def test_base_url_override(self):
         from tempmail_pyzit import TempMailClient
 
-        custom = TempMailClient("tok", base_url="https://mock.local/v1")
-        respx.post("https://mock.local/v1/validate/check/").mock(
+        custom = TempMailClient("tok", base_url="https://mock.local")
+        respx.post("https://mock.local/v1/tmd/check/").mock(
             return_value=httpx.Response(200, json=CLEAN_CHECK_PAYLOAD)
         )
         r = custom.check("hi@pyzit.com")

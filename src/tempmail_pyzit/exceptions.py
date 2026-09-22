@@ -8,48 +8,91 @@ class PyzitError(Exception):
 
 
 class AuthenticationError(PyzitError):
-    """Raised on HTTP 401 — invalid or missing API token."""
-
-
-class PlanRequiredError(PyzitError):
-    """Raised on HTTP 402/403 — endpoint needs a higher plan.
+    """Raised on HTTP 401 — invalid or missing API token.
 
     Attributes:
-        required_plan: The plan tier needed (e.g. "pro", "business").
+        status_code: 401
     """
 
-    def __init__(self, required_plan: str = "pro") -> None:
-        self.required_plan = required_plan
-        super().__init__(
-            f"This endpoint requires the '{required_plan}' plan or higher."
-        )
+    def __init__(self, message: str = "Invalid or inactive API key.") -> None:
+        super().__init__(message)
+        self.status_code = 401
 
 
-class ScopeError(PyzitError):
-    """Raised on HTTP 403 — token doesn't have the required scope.
+class InsufficientScopeError(PyzitError):
+    """Raised on HTTP 403 — token lacks required scope.
 
     Attributes:
-        required_scope: The scope string needed (e.g. 'detailed:tempemail_check').
+        status_code: 403
+        required_scope: The scope string needed (e.g. 'tmd:basic', 'tmd:detailed').
     """
 
-    def __init__(self, required_scope: str = "") -> None:
+    def __init__(self, message: str, required_scope: str = "") -> None:
+        super().__init__(message)
+        self.status_code = 403
         self.required_scope = required_scope
-        super().__init__(
-            f"Token missing required scope: '{required_scope}'. "
-            f"Enable this scope in your Pyzit dashboard."
-        )
+
+
+class QuotaExceededError(PyzitError):
+    """Raised on HTTP 402 — monthly simple or detailed quota exhausted.
+
+    Attributes:
+        status_code: 402
+        quota_type: Either "simple" or "detailed"
+    """
+
+    def __init__(self, message: str, quota_type: str = "simple") -> None:
+        super().__init__(message)
+        self.status_code = 402
+        self.quota_type = quota_type
+
+
+class BatchLimitExceededError(PyzitError):
+    """Raised on HTTP 400 — bulk emails list exceeds plan batch limit.
+
+    Attributes:
+        status_code: 400
+        max_allowed: Maximum batch size allowed by user's plan
+        attempted: Number of emails attempted in the request
+    """
+
+    def __init__(self, message: str, max_allowed: int = 10, attempted: int = 0) -> None:
+        super().__init__(message)
+        self.status_code = 400
+        self.max_allowed = max_allowed
+        self.attempted = attempted
+
+
+class ValidationError(PyzitError):
+    """Raised on HTTP 400 — malformed email or request payload.
+
+    Attributes:
+        status_code: 400
+        field_errors: Dictionary of field names to error messages
+    """
+
+    def __init__(
+        self, message: str, field_errors: dict[str, str] | None = None
+    ) -> None:
+        super().__init__(message)
+        self.status_code = 400
+        self.field_errors = field_errors or {}
 
 
 class RateLimitError(PyzitError):
     """Raised on HTTP 429 — you've exceeded the request quota.
 
     Attributes:
+        status_code: 429
         retry_after: Seconds to wait before retrying (from Retry-After header).
     """
 
-    def __init__(self, retry_after: int = 60) -> None:
+    def __init__(
+        self, message: str = "Rate limit exceeded.", retry_after: float = 1.0
+    ) -> None:
         self.retry_after = retry_after
-        super().__init__(f"Rate limit exceeded. Retry after {retry_after} seconds.")
+        self.status_code = 429
+        super().__init__(f"{message} Retry after {retry_after} seconds.")
 
 
 class APIError(PyzitError):
@@ -60,10 +103,18 @@ class APIError(PyzitError):
         response_body: Raw response text for debugging.
     """
 
-    def __init__(self, status_code: int, response_body: str = "") -> None:
+    def __init__(
+        self,
+        message: str = "",
+        status_code: int = 500,
+        response_body: str = "",
+    ) -> None:
         self.status_code = status_code
         self.response_body = response_body
-        super().__init__(f"API returned HTTP {status_code}: {response_body[:200]}")
+        if message:
+            super().__init__(f"{message} (HTTP {status_code})")
+        else:
+            super().__init__(f"API returned HTTP {status_code}: {response_body[:200]}")
 
 
 class TimeoutError(PyzitError):

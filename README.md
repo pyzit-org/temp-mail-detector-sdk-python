@@ -96,6 +96,8 @@ else:
 
 Get your API token at [temp-mail-detector.pyzit.com](https://temp-mail-detector.pyzit.com).
 
+> **Important:** API tokens now use the prefix `pyzit_live_...` (e.g., `pyzit_live_7b19e2f4a5c84d12903456789abcdef0`).
+
 > **Tip:** Store your token in an environment variable, never hard-code it.
 > ```python
 > import os
@@ -104,21 +106,39 @@ Get your API token at [temp-mail-detector.pyzit.com](https://temp-mail-detector.
 
 ---
 
-## ◈ API tiers
+## ◈ API tiers & quota model
 
-Three endpoints, three plan levels. Use only what you need.
+**New architecture:** Plans determine quota, not endpoint access. Every plan can use all endpoints.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         ENDPOINT OVERVIEW                           │
+│                         QUOTA MODEL                                  │
 ├──────────────────┬─────────────┬──────────────────────────────────┤
-│  Method          │  Plan       │  What you get                    │
+│  Plan            │  Simple     │  Detailed                        │
+│                  │  Quota/mo   │  Quota/mo                        │
 ├──────────────────┼─────────────┼──────────────────────────────────┤
-│  client.check()  │  Free       │  is_disposable + status          │
-│  client.detailed()│  Pro       │  DNS, signals, risk score, reco  │
-│  client.bulk()   │  Business   │  Up to 100 emails, one request   │
+│  Free Developer  │  1,000      │  20                              │
+│  Pro             │  50,000     │  1,000                           │
+│  Scale           │  500,000    │  25,000                          │
+│  Enterprise      │  Custom     │  Custom                          │
+└──────────────────┴─────────────┴──────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                      BULK BATCH LIMITS                                │
+├──────────────────┬─────────────┬──────────────────────────────────┤
+│  Plan            │  Max Emails │  Notes                           │
+├──────────────────┼─────────────┼──────────────────────────────────┤
+│  Free Developer  │  10         │  Per request                     │
+│  Pro             │  50         │  Per request                     │
+│  Scale           │  100        │  Per request                     │
+│  Enterprise      │  500+       │  Custom configured               │
 └──────────────────┴─────────────┴──────────────────────────────────┘
 ```
+
+**Important:** 
+- **Unlimited API keys** across all plans
+- **Token scopes** determine access: `tmd:basic` (check + bulk), `tmd:detailed` (detailed), `tmd:*` (all)
+- Any user on any plan can create tokens with any scope
 
 ---
 
@@ -126,7 +146,7 @@ Three endpoints, three plan levels. Use only what you need.
 
 ### `CheckResult` ← `check(email: str)`
 
-The fastest check. One email in, one decision out. **Free tier.**
+The fastest check. One email in, one decision out. Uses `simple_quota`.
 
 ```python
 result = client.check("user@mailnator.com")
@@ -152,7 +172,7 @@ CheckResult
 ### `DetailedResult` ← `detailed(email: str)`
 
 Full forensic analysis. DNS records, SMTP probing, reputation scoring,
-domain age, signal breakdown. **Pro tier.**
+domain age, signal breakdown. Uses `detailed_quota`. Requires `tmd:detailed` scope.
 
 ```python
 result = client.detailed("suspicious@new-domain.io")
@@ -185,8 +205,10 @@ DetailedResult
 ├── status             str
 ├── reputation_score   float   — 0.0 (worst) to 1.0 (best)
 ├── risk_level         str     — "low" | "medium" | "high"
-├── recommendation     str     — "accept" | "review" | "reject"
+├── recommendation     str     — "accept" | "flag" | "reject"
 ├── should_reject      bool    — shorthand: recommendation == "reject"
+├── should_flag        bool    — shorthand: recommendation == "flag"
+├── has_mx             bool    — shorthand: details.dns_intelligence.has_mx
 └── details
     ├── reputation
     │   ├── reputation_score      float
@@ -216,7 +238,7 @@ DetailedResult
 
 ### `BulkResult` ← `bulk(emails: list[str])`
 
-Validate up to 100 emails in a single API call. **Business tier.**
+Validate multiple emails in a single API call. Uses `simple_quota`. Batch size depends on your plan (Free=10, Pro=50, Scale=100).
 
 ```python
 result = client.bulk([
@@ -236,8 +258,14 @@ result.clean_emails()      # ["hi@pyzit.com"]
 
 ```
 BulkResult
-├── results             dict[str, bool]  — {email: is_disposable}
-├── processed           int              — number of emails processed
+├── total               int              — number of emails processed
+├── status              str              — "clean" | "disposable" | "mixed"
+├── disposable_count    int              — number of disposable emails
+├── flagged_domains     list[str]        — unique disposable domains
+├── results             list[BulkItemResult]
+│   ├── email           str
+│   ├── is_disposable   bool
+│   └── status          str
 ├── disposable_emails() list[str]        — emails where is_disposable=True
 └── clean_emails()      list[str]        — emails where is_disposable=False
 ```
@@ -293,11 +321,18 @@ at one level or be specific.
 ```
 PyzitError                    ← catch-all for any SDK error
 ├── AuthenticationError       ← HTTP 401 — bad or missing token
-├── PlanRequiredError         ← HTTP 402/403 — need a higher plan
-│   └── .required_plan        ← str, e.g. "pro" or "business"
-├── RateLimitError            ← HTTP 429 — slow down
-│   └── .retry_after          ← int, seconds to wait
-├── APIError                  ← any other non-2xx response
+├── InsufficientScopeError    ← HTTP 403 — token lacks required scope
+│   └── .required_scope       ← str, e.g. "tmd:basic" or "tmd:detailed"
+├── QuotaExceededError        ← HTTP 402 — monthly quota exhausted
+│   └── .quota_type           ← str, "simple" or "detailed"
+├── BatchLimitExceededError   ← HTTP 400 — bulk request exceeds plan limit
+│   ├── .max_allowed          ← int, plan's batch size limit
+│   └── .attempted            ← int, emails attempted
+├── ValidationError           ← HTTP 400 — malformed email or request
+│   └── .field_errors         ← dict, field-specific errors
+├── RateLimitError            ← HTTP 429 — rate limit exceeded
+│   └── .retry_after          ← float, seconds to wait
+├── APIError                  ← HTTP 5xx or unexpected status
 │   ├── .status_code          ← int
 │   └── .response_body        ← str, raw body for debugging
 └── TimeoutError              ← request took too long
@@ -309,7 +344,9 @@ PyzitError                    ← catch-all for any SDK error
 from tempmail_pyzit import (
     TempMailClient,
     AuthenticationError,
-    PlanRequiredError,
+    InsufficientScopeError,
+    QuotaExceededError,
+    BatchLimitExceededError,
     RateLimitError,
     APIError,
     TimeoutError,
@@ -326,9 +363,17 @@ except AuthenticationError:
     # token is wrong — fail fast, don't retry
     raise SystemExit("Check your PYZIT_TOKEN environment variable.")
 
-except PlanRequiredError as e:
-    # you called an endpoint above your plan
-    print(f"Upgrade to {e.required_plan} to use this feature.")
+except InsufficientScopeError as e:
+    # token lacks required scope
+    print(f"Your API token lacks the '{e.required_scope}' scope.")
+
+except QuotaExceededError as e:
+    # monthly quota exhausted
+    print(f"You've exceeded your monthly {e.quota_type} quota. Upgrade your plan.")
+
+except BatchLimitExceededError as e:
+    # bulk request exceeds plan limit
+    print(f"Your plan allows max {e.max_allowed} emails per bulk request.")
 
 except RateLimitError as e:
     # back off and retry
@@ -451,16 +496,20 @@ Both `TempMailClient` and `AsyncTempMailClient` accept the same options:
 ```python
 client = TempMailClient(
     api_token = "YOUR_TOKEN",   # required
-    timeout   = 10.0,           # seconds, default 10.0
-    base_url  = "https://api-tempmail.pyzit.com/v1",  # override for testing
+    timeout   = 5.0,            # seconds, default 5.0
+    base_url  = "https://api.pyzit.com",  # override for testing
+    max_retries = 2,            # retry attempts for 429/5xx, default 2
+    fail_open  = False,         # return clean on network errors, default False
 )
 ```
 
 | Parameter   | Type    | Default                                      | Description                        |
 |-------------|---------|----------------------------------------------|------------------------------------|
 | `api_token` | `str`   | —                                            | Your Pyzit API token (required)    |
-| `timeout`   | `float` | `10.0`                                       | Request timeout in seconds         |
-| `base_url`  | `str`   | `https://api-tempmail.pyzit.com/v1`          | Override for local testing / mocks |
+| `timeout`   | `float` | `5.0`                                        | Request timeout in seconds         |
+| `base_url`  | `str`   | `https://api.pyzit.com`                      | Override for local testing / mocks |
+| `max_retries`| `int`   | `2`                                          | Retry attempts for 429/5xx errors  |
+| `fail_open` | `bool`  | `False`                                      | Return clean result on network errors|
 
 ---
 

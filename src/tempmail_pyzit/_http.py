@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import httpx
@@ -7,13 +8,15 @@ import httpx
 from .exceptions import (
     APIError,
     AuthenticationError,
-    PlanRequiredError,
+    BatchLimitExceededError,
+    InsufficientScopeError,
+    QuotaExceededError,
     RateLimitError,
-    ScopeError,
+    ValidationError,
 )
 
-BASE_URL = "https://api-tempmail.pyzit.com/v1"
-DEFAULT_TIMEOUT = 10.0
+BASE_URL = "https://api.pyzit.com"
+DEFAULT_TIMEOUT = 5.0
 
 
 def build_headers(api_token: str) -> dict[str, str]:
@@ -32,45 +35,60 @@ def raise_for_status(response: httpx.Response) -> dict[str, Any]:
         result: dict[str, Any] = response.json()
         return result
 
+    try:
+        body = response.json()
+    except Exception:
+        body = {"detail": response.text}
+
+    detail = str(body.get("detail", ""))
+    code = body.get("code", "")
+
+    # 401 Unauthorized
     if response.status_code == 401:
-        raise AuthenticationError("Invalid or missing API token.")
+        raise AuthenticationError(detail or "Invalid or inactive API key.")
 
-    if response.status_code == 403:
-        try:
-            body = response.json()
-            detail = str(body.get("detail", ""))
-
-            # scope error — "Token missing required scope: xyz"
-            if "missing required scope" in detail.lower() or "scope" in detail.lower():
-                # extract scope name from message if present
-                scope = ""
-                if ":" in detail:
-                    # "Token missing required scope: detailed:tempemail_check"
-                    scope = detail.split("scope:")[-1].strip()
-                raise ScopeError(scope)
-
-            # plan error — body contains required_plan key
-            if "required_plan" in body or "upgrade" in str(body).lower():
-                plan = body.get("required_plan", "pro")
-                raise PlanRequiredError(plan)
-
-        except (ValueError, KeyError):
-            pass
-
-        # fallback — bad/inactive token
-        raise AuthenticationError(
-            "Access denied (403). Check your API token is valid and active."
+    # 402 Payment Required (Quota Exceeded)
+    if (
+        response.status_code == 402
+        or code == "quota_exceeded"
+        or "quota" in detail.lower()
+    ):
+        quota_type = "detailed" if "detailed" in detail.lower() else "simple"
+        raise QuotaExceededError(
+            detail or "Monthly quota exceeded.", quota_type=quota_type
         )
 
-    if response.status_code == 402:
-        try:
-            plan = response.json().get("required_plan", "pro")
-        except ValueError:
-            plan = "pro"
-        raise PlanRequiredError(plan)
+    # 403 Forbidden (Scope Missing)
+    if response.status_code == 403:
+        required_scope = "tmd:detailed" if "tmd:detailed" in detail else "tmd:basic"
+        raise InsufficientScopeError(
+            detail or "API key lacks required scope.",
+            required_scope=required_scope,
+        )
 
+    # 400 Bad Request
+    if response.status_code == 400:
+        if "maximum of" in detail and "bulk request" in detail:
+            # Extract numbers if present
+            match = re.search(r"maximum of (\d+)", detail)
+            max_allowed = int(match.group(1)) if match else 10
+            raise BatchLimitExceededError(detail, max_allowed=max_allowed)
+        raise ValidationError(detail or "Validation error.", field_errors=body)
+
+    # 429 Too Many Requests
     if response.status_code == 429:
-        retry = int(response.headers.get("Retry-After", 60))
-        raise RateLimitError(retry)
+        retry_after = 1.0
+        header_val = response.headers.get("Retry-After")
+        if header_val:
+            try:
+                retry_after = float(header_val)
+            except ValueError:
+                pass
+        raise RateLimitError(detail or "Request throttled.", retry_after=retry_after)
 
-    raise APIError(response.status_code, response.text)
+    # 5xx / Other
+    raise APIError(
+        detail or f"HTTP {response.status_code}",
+        status_code=response.status_code,
+        response_body=response.text,
+    )

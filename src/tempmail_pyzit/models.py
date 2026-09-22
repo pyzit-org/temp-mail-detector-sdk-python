@@ -18,96 +18,77 @@ class CheckResult(BaseModel):
         return not self.is_disposable
 
 
-# ── /v1/validate/detailed/ ───────────────────────────────────
-
-
-class ReputationDetail(BaseModel):
-    reputation_score: float
-    is_disposable: bool
-    disposable_confidence: float
-    risk_level: str  # "low" | "medium" | "high"
-    recommendation: str  # "accept" | "review" | "reject"
-
-
-class Signals(BaseModel):
-    positive: list[str] = Field(default_factory=list)
-    negative: list[str] = Field(default_factory=list)
-    neutral: list[str] = Field(default_factory=list)
-
-
-class MxRecord(BaseModel):
-    """A single MX record with priority, exchange host, and resolved IPs."""
-
-    priority: int
-    exchange: str
-    ips: list[str] = Field(default_factory=list)
-
-    def __str__(self) -> str:
-        return f"{self.exchange} (priority={self.priority})"
-
-
-class DnsIntelligence(BaseModel):
-    has_mx: bool
-    mx_records: list[MxRecord] = Field(default_factory=list)  # ← was list[str]
-    has_a_record: bool
-    has_spf: bool
-    has_dmarc: bool
-    error: str | None = None
-
-    def mx_hostnames(self) -> list[str]:
-        """Return just the exchange hostnames, e.g. ['mail.example.com']"""
-        return [r.exchange for r in self.mx_records]
-
-    def mx_ips(self) -> list[str]:
-        """Return all resolved IPs across all MX records."""
-        return [ip for r in self.mx_records for ip in r.ips]
-
-
-class StabilityInfo(BaseModel):
-    stability_score: float
-    domain_age_days: int
-    is_new_domain: bool
-    risk_factors: list[str] = Field(default_factory=list)
+# ── /v1/tmd/detailed/ ───────────────────────────────────
 
 
 class DetailedDetails(BaseModel):
-    reputation: ReputationDetail
-    signals: Signals
-    dns_intelligence: DnsIntelligence
-    stability: StabilityInfo
+    """Detailed DNS and classification information."""
+
+    has_mx: bool
+    mx_records: list[str] = Field(default_factory=list)
+    has_a: bool
+    a_records: list[str] = Field(default_factory=list)
+    has_spf: bool
+    spf_record: str | None = None
+    has_dmarc: bool
+    dmarc_record: str | None = None
 
 
 class DetailedResult(BaseModel):
-    """Response from the Pro-tier /detailed/ endpoint."""
+    """Response from the detailed endpoint."""
 
     email: str
     domain: str
     is_disposable: bool
-    status: str
-    reputation_score: float
-    risk_level: str
-    recommendation: str
+    is_trusted: bool
+    classification: str  # "trusted" | "disposable" | "unknown"
+    reputation_score: int  # 0-100 scale
+    risk_level: str  # "low" | "medium" | "high"
+    is_valid_format: bool
+    rule_applied: str | None = None
     details: DetailedDetails
+    status: str  # "clean" | "disposable"
 
     @property
     def should_reject(self) -> bool:
-        """True when the API recommends rejecting this email."""
-        return self.recommendation == "reject"
+        """True when the email should be rejected (disposable or untrusted)."""
+        return self.is_disposable or not self.is_trusted
+
+    @property
+    def should_flag(self) -> bool:
+        """True when the email needs manual review."""
+        return self.classification == "unknown"
+
+    @property
+    def has_mx(self) -> bool:
+        """Shorthand for DNS MX record check."""
+        return self.details.has_mx
 
 
-# ── /v1/validate/bulk/ ───────────────────────────────────────
+# ── /v1/tmd/bulk/ ───────────────────────────────────────
+
+
+class BulkItemResult(BaseModel):
+    """Individual result for a single email in bulk check."""
+
+    email: str
+    is_disposable: bool
+    status: str  # "clean" | "disposable"
 
 
 class BulkResult(BaseModel):
-    """Response from the Business-tier /bulk/ endpoint."""
+    """Response from the bulk endpoint."""
 
-    results: dict[str, bool]  # {email: is_disposable}
-    processed: int
+    total: int
+    status: str  # "clean" | "disposable" | "mixed"
+    disposable_count: int
+    flagged_domains: list[str] = Field(default_factory=list)
+    results: list[BulkItemResult] = Field(default_factory=list)
 
     def disposable_emails(self) -> list[str]:
         """Return only the emails that ARE disposable."""
-        return [e for e, disp in self.results.items() if disp]
+        return [item.email for item in self.results if item.is_disposable]
 
     def clean_emails(self) -> list[str]:
         """Return only the emails that are NOT disposable."""
-        return [e for e, disp in self.results.items() if not disp]
+        return [item.email for item in self.results if not item.is_disposable]

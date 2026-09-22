@@ -15,7 +15,7 @@ Official Python SDK for the Pyzit Disposable Email API.
 
 Quick start::
 
-    from pyzit_tempmail import TempMailClient
+    from tempmail_pyzit import TempMailClient
 
     client = TempMailClient("YOUR_TOKEN")
 
@@ -29,20 +29,22 @@ from .client import TempMailClient
 from .exceptions import (
     APIError,
     AuthenticationError,
-    PlanRequiredError,
+    BatchLimitExceededError,
+    InsufficientScopeError,
     PyzitError,
+    QuotaExceededError,
     RateLimitError,
-    ScopeError,
     TimeoutError,
+    ValidationError,
 )
 from .models import (
+    BulkItemResult,
     BulkResult,
     CheckResult,
     DetailedResult,
-    MxRecord,
 )
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     # clients
@@ -52,12 +54,14 @@ __all__ = [
     "CheckResult",
     "DetailedResult",
     "BulkResult",
-    "MxRecord",
+    "BulkItemResult",
     # exceptions
     "PyzitError",
     "AuthenticationError",
-    "ScopeError",
-    "PlanRequiredError",
+    "InsufficientScopeError",
+    "QuotaExceededError",
+    "BatchLimitExceededError",
+    "ValidationError",
     "RateLimitError",
     "APIError",
     "TimeoutError",

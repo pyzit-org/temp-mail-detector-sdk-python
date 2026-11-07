@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 from fixtures import (
     BULK_PAYLOAD,
+    BULK_WITH_RELAY_PAYLOAD,
     CLEAN_CHECK_PAYLOAD,
     DETAILED_PAYLOAD,
     DISPOSABLE_CHECK_PAYLOAD,
+    PRIVACY_RELAY_CHECK_PAYLOAD,
 )
 from pydantic import ValidationError
 
@@ -20,6 +22,16 @@ class TestCheckResult:
         assert r.email == "hi@pyzit.com"
         assert r.is_disposable is False
         assert r.status == "clean"
+
+    def test_parses_privacy_relay(self):
+        r = CheckResult(**PRIVACY_RELAY_CHECK_PAYLOAD)
+        assert r.email == "user@privaterelay.appleid.com"
+        assert r.is_disposable is False
+        assert r.is_privacy_relay is True
+        assert r.status == "privacy_relay"
+        assert r.relay_provider == "apple"
+        assert r.provider_name == "Apple Private Relay"
+        assert r.is_clean is True
 
     def test_is_clean_property_true_when_not_disposable(self):
         r = CheckResult(**CLEAN_CHECK_PAYLOAD)
@@ -115,6 +127,14 @@ class TestBulkResult:
     def test_flagged_domains(self):
         r = BulkResult(**BULK_PAYLOAD)
         assert r.flagged_domains == ["mailnator.com"]
+
+    def test_privacy_relay_in_bulk(self):
+        r = BulkResult(**BULK_WITH_RELAY_PAYLOAD)
+        assert r.total == 3
+        assert r.privacy_relay_count == 1
+        assert r.privacy_relay_emails() == ["user@privaterelay.appleid.com"]
+        assert r.disposable_emails() == ["x@mailnator.com"]
+        assert r.clean_emails() == ["hi@pyzit.com", "user@privaterelay.appleid.com"]
 
     def test_empty_bulk_result(self):
         r = BulkResult(

@@ -13,6 +13,14 @@ DISPOSABLE_CHECK_PAYLOAD = {
     "is_disposable": True,
     "status": "disposable",
 }
+PRIVACY_RELAY_CHECK_PAYLOAD = {
+    "email": "user@privaterelay.appleid.com",
+    "is_disposable": False,
+    "is_privacy_relay": True,
+    "status": "privacy_relay",
+    "relay_provider": "apple",
+    "provider_name": "Apple Private Relay",
+}
 DETAILED_PAYLOAD = {
     "email": "user@guerrillamail.com",
     "domain": "guerrillamail.com",
@@ -39,9 +47,49 @@ BULK_PAYLOAD = {
     "total": 2,
     "status": "mixed",
     "disposable_count": 1,
+    "privacy_relay_count": 0,
     "flagged_domains": ["mailnator.com"],
     "results": [
-        {"email": "hi@pyzit.com", "is_disposable": False, "status": "clean"},
-        {"email": "x@mailnator.com", "is_disposable": True, "status": "disposable"},
+        {
+            "email": "hi@pyzit.com",
+            "is_disposable": False,
+            "is_privacy_relay": False,
+            "status": "clean",
+        },
+        {
+            "email": "x@mailnator.com",
+            "is_disposable": True,
+            "is_privacy_relay": False,
+            "status": "disposable",
+        },
+    ],
+}
+BULK_WITH_RELAY_PAYLOAD = {
+    "total": 3,
+    "status": "mixed",
+    "disposable_count": 1,
+    "privacy_relay_count": 1,
+    "flagged_domains": ["mailnator.com"],
+    "results": [
+        {
+            "email": "hi@pyzit.com",
+            "is_disposable": False,
+            "is_privacy_relay": False,
+            "status": "clean",
+        },
+        {
+            "email": "x@mailnator.com",
+            "is_disposable": True,
+            "is_privacy_relay": False,
+            "status": "disposable",
+        },
+        {
+            "email": "user@privaterelay.appleid.com",
+            "is_disposable": False,
+            "is_privacy_relay": True,
+            "status": "privacy_relay",
+            "relay_provider": "apple",
+            "provider_name": "Apple Private Relay",
+        },
     ],
 }

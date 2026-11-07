@@ -171,28 +171,25 @@ CheckResult
 
 ### `DetailedResult` ← `detailed(email: str)`
 
-Full forensic analysis. DNS records, SMTP probing, reputation scoring,
-domain age, signal breakdown. Uses `detailed_quota`. Requires `tmd:detailed` scope.
+Full forensic analysis. DNS records (MX, A, SPF, DMARC), reputation scoring,
+domain classification. Uses `detailed_quota`. Requires `tmd:detailed` scope.
 
 ```python
-result = client.detailed("suspicious@new-domain.io")
+result = client.detailed("hi@pyzit.com")
 
-result.risk_level       # "high"
-result.recommendation   # "reject"
-result.reputation_score # 0.0
-result.should_reject    # True  (convenience property)
+result.risk_level       # "low"
+result.classification   # "trusted"
+result.reputation_score # 100  (int, 0 to 100)
+result.should_reject    # False  (convenience property)
 
 # DNS intelligence
-result.details.dns_intelligence.has_mx      # False
-result.details.dns_intelligence.has_spf     # False
-
-# Signal breakdown
-result.details.signals.negative  # ["no_mx_records", "new_domain", ...]
-result.details.signals.positive  # []
-
-# Domain stability
-result.details.stability.domain_age_days  # 0
-result.details.stability.is_new_domain    # True
+result.has_mx           # True
+result.details.has_mx   # True
+result.details.mx_records  # ["mail1.pyzit.com", "mail2.pyzit.com"]
+result.details.has_spf     # True
+result.details.spf_record  # "v=spf1 include:_spf.pyzit.com ~all"
+result.details.has_dmarc   # True
+result.details.dmarc_record # "v=DMARC1; p=reject; sp=reject"
 ```
 
 **Response shape:**
@@ -202,72 +199,71 @@ DetailedResult
 ├── email              str
 ├── domain             str
 ├── is_disposable      bool
-├── status             str
-├── reputation_score   float   — 0.0 (worst) to 1.0 (best)
+├── is_trusted         bool
+├── is_privacy_relay   bool
+├── relay_provider     str | None
+├── provider_name      str | None
+├── classification     str     — "trusted" | "clean" | "privacy_relay" | "suspicious" | "disposable"
+├── reputation_score   int     — 0 (worst) to 100 (best)
 ├── risk_level         str     — "low" | "medium" | "high"
-├── recommendation     str     — "accept" | "flag" | "reject"
-├── should_reject      bool    — shorthand: recommendation == "reject"
-├── should_flag        bool    — shorthand: recommendation == "flag"
-├── has_mx             bool    — shorthand: details.dns_intelligence.has_mx
-└── details
-    ├── reputation
-    │   ├── reputation_score      float
-    │   ├── is_disposable         bool
-    │   ├── disposable_confidence float
-    │   ├── risk_level            str
-    │   └── recommendation        str
-    ├── signals
-    │   ├── positive   list[str]  — trust signals
-    │   ├── negative   list[str]  — risk signals
-    │   └── neutral    list[str]  — ambiguous signals
-    ├── dns_intelligence
-    │   ├── has_mx       bool
-    │   ├── mx_records   list[str]
-    │   ├── has_a_record bool
-    │   ├── has_spf      bool
-    │   ├── has_dmarc    bool
-    │   └── error        str | None
-    └── stability
-        ├── stability_score   float
-        ├── domain_age_days   int
-        ├── is_new_domain     bool
-        └── risk_factors      list[str]
+├── is_valid_format    bool
+├── cached             bool
+├── rule_applied       str | None
+├── should_reject      bool    — shorthand: is_disposable or not is_trusted
+├── should_flag        bool    — shorthand: classification in ("unknown", "suspicious")
+├── has_mx             bool    — shorthand: details.has_mx
+└── details            DetailedDetails
+    ├── has_mx       bool
+    ├── mx_records   list[str]
+    ├── has_a        bool
+    ├── a_records    list[str]
+    ├── has_spf      bool
+    ├── spf_record   str | None
+    ├── has_dmarc    bool
+    └── dmarc_record str | None
 ```
 
 ---
 
 ### `BulkResult` ← `bulk(emails: list[str])`
 
-Validate multiple emails in a single API call. Uses `simple_quota`. Batch size depends on your plan (Free=10, Pro=50, Scale=100).
+Validate multiple emails in a single API call. Uses `simple_quota`. Batch size depends on your plan (Free=10, Starter=25, Pro=50, Growth=75, Scale=100).
 
 ```python
 result = client.bulk([
     "hi@pyzit.com",
-    "cyz@temp-mail.org",
     "user@mailnator.com",
+    "user@privaterelay.appleid.com",
 ])
 
-result.processed          # 3
-result.results            # {"hi@pyzit.com": False, "cyz@temp-mail.org": True, ...}
+result.total                 # 3
+result.status                # "mixed"
+result.disposable_count      # 1
+result.privacy_relay_count   # 1
+result.flagged_domains       # ["mailnator.com"]
 
-result.disposable_emails() # ["cyz@temp-mail.org", "user@mailnator.com"]
-result.clean_emails()      # ["hi@pyzit.com"]
+result.clean_emails()        # ["hi@pyzit.com", "user@privaterelay.appleid.com"]
+result.disposable_emails()   # ["user@mailnator.com"]
+result.privacy_relay_emails() # ["user@privaterelay.appleid.com"]
 ```
 
 **Response shape:**
 
 ```
 BulkResult
-├── total               int              — number of emails processed
-├── status              str              — "clean" | "disposable" | "mixed"
-├── disposable_count    int              — number of disposable emails
-├── flagged_domains     list[str]        — unique disposable domains
-├── results             list[BulkItemResult]
-│   ├── email           str
-│   ├── is_disposable   bool
-│   └── status          str
-├── disposable_emails() list[str]        — emails where is_disposable=True
-└── clean_emails()      list[str]        — emails where is_disposable=False
+├── total                  int              — number of emails processed
+├── status                 str              — "clean" | "disposable" | "privacy_relay" | "mixed"
+├── disposable_count       int              — number of disposable emails
+├── privacy_relay_count    int              — number of privacy relay emails
+├── flagged_domains        list[str]        — unique disposable domains
+├── results                list[BulkItemResult]
+│   ├── email              str
+│   ├── is_disposable      bool
+│   ├── is_privacy_relay   bool
+│   └── status             str
+├── clean_emails()         list[str]        — emails where is_disposable=False
+├── disposable_emails()    list[str]        — emails where is_disposable=True
+└── privacy_relay_emails() list[str]        — emails where is_privacy_relay=True
 ```
 
 ---
@@ -303,12 +299,9 @@ tempmail_pyzit.models
 │
 ├── CheckResult          ← client.check()
 ├── DetailedResult       ← client.detailed()
-│   └── DetailedDetails
-│       ├── ReputationDetail
-│       ├── Signals
-│       ├── DnsIntelligence
-│       └── StabilityInfo
+│   └── DetailedDetails  (DNS intelligence)
 └── BulkResult           ← client.bulk()
+    └── BulkItemResult
 ```
 
 ---

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-01-XX
+## [1.0.0] - 2026-11-07
 
 ### ⚠️ BREAKING CHANGES
 
@@ -26,13 +26,15 @@ This is a major architectural overhaul to align with the new Pyzit Temp Mail Det
 
 #### Bulk Response Structure
 - **Old**: `{"results": {email: bool}, "processed": int}`
-- **New**: `{"total": int, "status": str, "disposable_count": int, "flagged_domains": [], "results": [{email, is_disposable, status}]}`
-- Helper methods updated to work with new structure
+- **New**: `{"total": int, "status": str, "disposable_count": int, "privacy_relay_count": int, "flagged_domains": [], "results": [BulkItemResult]}`
+- Added helper methods: `clean_emails()`, `disposable_emails()`, `privacy_relay_emails()`
 
 #### Model Changes
-- ❌ **Removed**: `MxRecord` model (MX records now returned as list of strings)
+- ❌ **Removed**: `MxRecord` model (MX records now returned as flat list of strings)
 - ✅ **Added**: `BulkItemResult` model for individual bulk results
-- **DNS Intelligence**: `mx_records` now `list[str]` instead of `list[MxRecord]`
+- ✅ **Added**: Full Privacy Relay support (`is_privacy_relay`, `relay_provider`, `provider_name`) across `CheckResult`, `DetailedResult`, and `BulkResult`
+- **DNS Intelligence**: Flat DNS structure in `DetailedDetails` (`has_mx`, `mx_records`, `has_a`, `a_records`, `has_spf`, `spf_record`, `has_dmarc`, `dmarc_record`)
+- **Reputation Score**: Standardized to integer 0..100 scale
 
 ### ✨ New Features
 
